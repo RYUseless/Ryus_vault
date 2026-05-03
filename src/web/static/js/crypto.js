@@ -1,4 +1,3 @@
-// secp256k1 curve parameters — single source of truth
 const CURVE = {
     P: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2Fn,
     ORDER: 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141n,
@@ -6,9 +5,7 @@ const CURVE = {
     Gy: 0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8n,
 };
 const G = [CURVE.Gx, CURVE.Gy];
-// i mean secp256k1 krivka je public anyways, so fuck it -- key samotný se uz derivuje
 
-// --- Math ---
 function modpow(base, exp, mod) {
     let result = 1n;
     base = base % mod;
@@ -43,7 +40,6 @@ function pointAdd(p1, p2) {
     return [x3, y3];
 }
 
-
 function scalarMul(k, point) {
     let result = null;
     let addend = point;
@@ -55,7 +51,6 @@ function scalarMul(k, point) {
     return result;
 }
 
-// --- Encoding helpers ---
 function bytesToHex(bytes) {
     return [...bytes].map(b => b.toString(16).padStart(2, "0")).join("");
 }
@@ -68,7 +63,6 @@ function bigIntToHex(n, len = 64) {
     return n.toString(16).padStart(len, "0");
 }
 
-// --- Crypto primitives ---
 async function deriveSecret(password, salt) {
     const keyMaterial = await crypto.subtle.importKey(
         "raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]
@@ -86,13 +80,32 @@ async function sha256BigInt(...values) {
     return BigInt("0x" + bytesToHex(new Uint8Array(buf))) % CURVE.ORDER;
 }
 
-async function generateProof(secret, publicKey, username) {
+async function generateOrProof(secret, realPk, dummyPk, username) {
+    const c1Bytes = crypto.getRandomValues(new Uint8Array(32));
+    const s1Bytes = crypto.getRandomValues(new Uint8Array(32));
+    const c1 = BigInt("0x" + bytesToHex(c1Bytes)) % CURVE.ORDER;
+    const s1 = BigInt("0x" + bytesToHex(s1Bytes)) % CURVE.ORDER;
+
+    const r1 = pointAdd(scalarMul(s1, G), scalarMul(c1, dummyPk));
+
     const rBytes = crypto.getRandomValues(new Uint8Array(32));
     const r = BigInt("0x" + bytesToHex(rBytes)) % CURVE.ORDER;
-    const rPoint = scalarMul(r, G);
-    const challenge = await sha256BigInt(rPoint[0], rPoint[1], publicKey[0], publicKey[1], username);
-    const response = ((r - challenge * secret) % CURVE.ORDER + CURVE.ORDER) % CURVE.ORDER;
-    return { rPoint, challenge, response };
+    const r0 = scalarMul(r, G);
+
+    const c_total = await sha256BigInt(
+        r0[0], r0[1], r1[0], r1[1],
+        realPk[0], realPk[1],
+        dummyPk[0], dummyPk[1],
+        username
+    );
+
+    const c0 = ((c_total - c1) % CURVE.ORDER + CURVE.ORDER) % CURVE.ORDER;
+    const s0 = ((r - c0 * secret) % CURVE.ORDER + CURVE.ORDER) % CURVE.ORDER;
+
+    return {
+        branch0: { R: r0, c: c0, s: s0 },
+        branch1: { R: r1, c: c1, s: s1 }
+    };
 }
 
 async function deriveVaultKey(secret, saltHex) {

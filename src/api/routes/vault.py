@@ -50,13 +50,12 @@ def get_entry(entry_id: str):
     entry = vault_repo.find_entry(entry_id, g.user_id)
     if not entry:
         return jsonify({"error": "Not found"}), 404
-    response = EntryResponse(
+    return jsonify(EntryResponse(
         id=entry.id,
         title=entry.title,
         ciphertext=entry.ciphertext.hex(),
         nonce=entry.nonce.hex()
-    )
-    return jsonify(response.model_dump()), 200
+    ).model_dump()), 200
 
 
 @vault_bp.route("/entries/<entry_id>", methods=["DELETE"])

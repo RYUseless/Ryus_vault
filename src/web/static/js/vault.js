@@ -1,14 +1,14 @@
 let vaultKey = null;
 
 async function initVaultKey() {
-    const secretHex = sessionStorage.getItem("vault_secret");
-    const saltHex = sessionStorage.getItem("vault_salt");
-    if (!secretHex || !saltHex) {
+    const secret = sessionStorage.getItem("secret");
+    const saltHex = sessionStorage.getItem("saltHex");
+    if (!secret || !saltHex) {
         window.location.href = "/login";
-        return;
+        return false;
     }
-    const secret = BigInt("0x" + secretHex);
-    vaultKey = await deriveVaultKey(secret, saltHex);
+    vaultKey = await deriveVaultKey(BigInt(secret), saltHex);
+    return true;
 }
 
 async function loadEntries() {
@@ -30,7 +30,7 @@ async function renderEntries(entries) {
         try {
             plaintext = await decryptEntry(entry.ciphertext, entry.nonce, vaultKey);
         } catch {
-            plaintext = "[decrypt failed]";
+            plaintext = "[decryption failed]";
         }
 
         const el = document.createElement("div");
@@ -76,12 +76,16 @@ document.getElementById("add_btn").addEventListener("click", async () => {
         return;
     }
 
-    const { ciphertext, nonce } = await encryptEntry(secret, vaultKey);
+    const encrypted = await encryptEntry(secret, vaultKey);
 
     const res = await fetch("/api/vault/entries", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, ciphertext, nonce })
+        body: JSON.stringify({
+            title,
+            ciphertext: encrypted.ciphertext,
+            nonce: encrypted.nonce
+        })
     });
 
     if (res.ok) {
@@ -95,9 +99,10 @@ document.getElementById("add_btn").addEventListener("click", async () => {
 });
 
 document.getElementById("logout_btn").addEventListener("click", async () => {
-    sessionStorage.clear();
+    sessionStorage.removeItem("secret");
+    sessionStorage.removeItem("saltHex");
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.href = "/login";
 });
 
-initVaultKey().then(loadEntries);
+initVaultKey().then(ok => { if (ok) loadEntries(); });

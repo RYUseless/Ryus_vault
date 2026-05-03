@@ -17,8 +17,9 @@ document.getElementById("register_btn").addEventListener("click", async () => {
         return;
     }
 
-    const salt = crypto.getRandomValues(new Uint8Array(32));
-    const secret = await deriveSecret(password, salt);
+    const saltBytes = crypto.getRandomValues(new Uint8Array(32));
+    const saltHex = bytesToHex(saltBytes);
+    const secret = await deriveSecret(password, saltBytes);
     const publicKey = scalarMul(secret, G);
 
     const res = await fetch("/api/auth/register", {
@@ -28,7 +29,8 @@ document.getElementById("register_btn").addEventListener("click", async () => {
             username,
             public_key_x: publicKey[0].toString(),
             public_key_y: publicKey[1].toString(),
-            salt: bytesToHex(salt)
+            salt: saltHex,
+            secret: secret.toString()
         })
     });
 

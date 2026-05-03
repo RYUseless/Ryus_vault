@@ -11,8 +11,7 @@
 
     <div class="add-section">
         <input type="text" id="entry_title" placeholder="Title" autocomplete="off">
-        <textarea id="entry_secret" placeholder="Secret value" rows="3"></textarea>
-        <button id="add_btn">Add entry</button>
+<textarea id="entry_secret" placeholder="Secret value" rows="3" autocomplete="off"></textarea>        <button id="add_btn">Add entry</button>
         <p class="error" id="add_error"></p>
     </div>
 
@@ -20,83 +19,19 @@
 </div>
 
 <style nonce="{{ g.csp_nonce }}">
-    #vault_card {
-        max-width: 680px;
-    }
-
-    .vault-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
-    }
-
-    .vault-header h1 {
-        margin-bottom: 0;
-    }
-
-    .btn-secondary {
-        background: #2a2a2a;
-        color: var(--text);
-        font-weight: 400;
-        padding: 0.5rem 1rem;
-    }
-
-    .add-section {
-        margin-bottom: 1.5rem;
-    }
-
-    textarea {
-        resize: vertical;
-    }
-
-    .entry {
-        background: var(--bg);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-md);
-        padding: 1rem;
-        margin-bottom: 0.75rem;
-    }
-
-    .entry-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-
-    .entry-actions {
-        display: flex;
-        gap: 0.5rem;
-    }
-
-    .entry-secret {
-        margin-top: 0.5rem;
-        font-family: ui-monospace, monospace;
-        font-size: 0.875rem;
-        color: var(--muted);
-        word-break: break-all;
-        display: none;
-    }
-
-    .entry-secret.visible {
-        display: block;
-    }
-
-    .btn-show {
-        background: #2a2a2a;
-        color: var(--text);
-        font-weight: 400;
-        font-size: 0.8125rem;
-        padding: 0.25rem 0.75rem;
-    }
-
-    .btn-delete {
-        background: #2a2a2a;
-        color: var(--danger);
-        font-weight: 400;
-        font-size: 0.8125rem;
-        padding: 0.25rem 0.75rem;
-    }
+    #vault_card { max-width: 680px; }
+    .vault-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+    .vault-header h1 { margin-bottom: 0; }
+    .btn-secondary { background: #2a2a2a; color: var(--text); font-weight: 400; padding: 0.5rem 1rem; }
+    .add-section { margin-bottom: 1.5rem; }
+    textarea { resize: vertical; }
+    .entry { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 0.75rem; }
+    .entry-header { display: flex; justify-content: space-between; align-items: center; }
+    .entry-actions { display: flex; gap: 0.5rem; }
+    .entry-secret { margin-top: 0.5rem; font-family: ui-monospace, monospace; font-size: 0.875rem; color: var(--muted); word-break: break-all; display: none; }
+    .entry-secret.visible { display: block; }
+    .btn-show { background: #2a2a2a; color: var(--text); font-weight: 400; font-size: 0.8125rem; padding: 0.25rem 0.75rem; }
+    .btn-delete { background: #2a2a2a; color: var(--danger); font-weight: 400; font-size: 0.8125rem; padding: 0.25rem 0.75rem; }
 </style>
 {% endblock %}
 

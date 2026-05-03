@@ -1,11 +1,15 @@
 from dataclasses import dataclass
 
+
 @dataclass
 class User:
     id: str
     username: str
     public_key: tuple[int, int]
+    dummy_public_key: tuple[int, int]
     salt: bytes
+    encrypted_secret: bytes
+
 
 @dataclass
 class VaultEntry:
@@ -14,6 +18,7 @@ class VaultEntry:
     title: str
     ciphertext: bytes
     nonce: bytes
+
 
 @dataclass
 class SessionToken:

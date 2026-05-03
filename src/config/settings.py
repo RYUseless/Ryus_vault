@@ -1,11 +1,11 @@
-from dataclasses import dataclass
 import os
+from dataclasses import dataclass, field
 
 
 @dataclass
 class Settings:
-    jwt_secret: str = os.getenv("JWT_SECRET", "")
-    db_path: str = os.getenv("DB_PATH", "data/vault.db")
-    host: str = os.getenv("HOST", "0.0.0.0")
-    port: int = int(os.getenv("PORT", "5000"))
-    debug: bool = os.getenv("DEBUG", "false").lower() == "true"
+    jwt_secret: str = field(default_factory=lambda: os.getenv("JWT_SECRET", ""))
+    vault_master_secret: str = field(default_factory=lambda: os.getenv("VAULT_MASTER_SECRET", ""))
+    host: str = field(default_factory=lambda: os.getenv("HOST", "0.0.0.0"))
+    port: int = field(default_factory=lambda: int(os.getenv("PORT", "5000")))
+    debug: bool = field(default_factory=lambda: os.getenv("DEBUG", "false").lower() == "true")

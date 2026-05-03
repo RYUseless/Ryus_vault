@@ -1,26 +1,29 @@
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass
-class Commitment:
-    point: tuple[int, int]
+class ECPoint:
+    x: int
+    y: int
 
 
 @dataclass
-class Challenge:
-    value: int
-
-
-@dataclass
-class Proof:
-    commitment: Commitment
-    challenge: Challenge
+class OrProofBranch:
+    commitment: ECPoint
+    challenge: int
     response: int
 
 
 @dataclass
+class OrProof:
+    branch0: OrProofBranch
+    branch1: OrProofBranch
+
+
+@dataclass
 class PublicKey:
-    point: tuple[int, int]
+    point: Optional[tuple[int, int]]
 
 
 @dataclass

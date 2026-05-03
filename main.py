@@ -13,8 +13,8 @@ from logs.sanitized_logger import get_logger
 logger = get_logger(__name__)
 
 if __name__ == "__main__":
-    logger.info("Starting Ryus Vault")
     load_dotenv()
+    logger.info("Starting Ryus Vault")
     app = create_app()
     settings = Settings()
     logger.info(f"Running on {settings.host}:{settings.port}")

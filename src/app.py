@@ -17,8 +17,8 @@ logger = get_logger(__name__)
 
 def create_app() -> Flask:
     app = Flask(__name__, template_folder="web/templates", static_folder="web/static")
-
     env_path = Path(__file__).parent.parent / ".env"
+
     if not os.getenv("JWT_SECRET"):
         jwt_secret = secrets.token_hex(32)
         with open(env_path, "a") as f:
@@ -26,8 +26,16 @@ def create_app() -> Flask:
         os.environ["JWT_SECRET"] = jwt_secret
         logger.info("Generated new JWT_SECRET")
 
-    settings = Settings()  # až po nastavení JWT_SECRET
+    if not os.getenv("VAULT_MASTER_SECRET"):
+        vault_master_secret = secrets.token_hex(32)
+        with open(env_path, "a") as f:
+            f.write(f"\nVAULT_MASTER_SECRET={vault_master_secret}\n")
+        os.environ["VAULT_MASTER_SECRET"] = vault_master_secret
+        logger.info("Generated new VAULT_MASTER_SECRET")
+
+    settings = Settings()
     app.config["JWT_SECRET"] = settings.jwt_secret
+    app.config["VAULT_MASTER_SECRET"] = settings.vault_master_secret
 
     logger.info("Initializing database")
     db = SQLiteDatabase()
