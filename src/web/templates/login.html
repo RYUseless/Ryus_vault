@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Login — Ryus Vault{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>Login</h1>
+    <input type="text" id="username" placeholder="Username" autocomplete="off">
+    <input type="password" id="password" placeholder="Master password" autocomplete="off">
+    <button id="login_btn">Login</button>
+    <p class="error" id="error_msg"></p>
+    <div class="link"><a href="/register">No account? Register</a></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/crypto.js') }}"></script>
+<script nonce="{{ g.csp_nonce }}" src="{{ url_for('static', filename='js/login.js') }}"></script>
+{% endblock %}
