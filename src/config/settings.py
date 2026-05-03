@@ -4,7 +4,7 @@ import os
 
 @dataclass
 class Settings:
-    jwt_secret: str = os.getenv("JWT_SECRET", "change-me-in-production")
+    jwt_secret: str = os.getenv("JWT_SECRET", "")
     db_path: str = os.getenv("DB_PATH", "data/vault.db")
     host: str = os.getenv("HOST", "0.0.0.0")
     port: int = int(os.getenv("PORT", "5000"))

@@ -1,7 +1,10 @@
 import sys
 import os
 
+from flask.cli import load_dotenv
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+# bruh what?
 
 from app import create_app
 from config.settings import Settings
@@ -11,6 +14,7 @@ logger = get_logger(__name__)
 
 if __name__ == "__main__":
     logger.info("Starting Ryus Vault")
+    load_dotenv()
     app = create_app()
     settings = Settings()
     logger.info(f"Running on {settings.host}:{settings.port}")

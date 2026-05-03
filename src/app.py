@@ -1,3 +1,7 @@
+import os
+import secrets
+from pathlib import Path
+
 from flask import Flask
 from config.settings import Settings
 from api.errors.handlers import register_error_handlers
@@ -14,9 +18,15 @@ logger = get_logger(__name__)
 def create_app() -> Flask:
     app = Flask(__name__, template_folder="web/templates", static_folder="web/static")
 
-    app.register_blueprint(web_bp)
+    env_path = Path(__file__).parent.parent / ".env"
+    if not os.getenv("JWT_SECRET"):
+        jwt_secret = secrets.token_hex(32)
+        with open(env_path, "a") as f:
+            f.write(f"\nJWT_SECRET={jwt_secret}\n")
+        os.environ["JWT_SECRET"] = jwt_secret
+        logger.info("Generated new JWT_SECRET")
 
-    settings = Settings()
+    settings = Settings()  # až po nastavení JWT_SECRET
     app.config["JWT_SECRET"] = settings.jwt_secret
 
     logger.info("Initializing database")
@@ -28,12 +38,12 @@ def create_app() -> Flask:
     register_error_handlers(app)
 
     logger.info("Registering blueprints")
+    app.register_blueprint(web_bp)
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(vault_bp, url_prefix="/api/vault")
 
     logger.info("App ready")
     return app
-
 
 if __name__ == "__main__":
     app = create_app()
