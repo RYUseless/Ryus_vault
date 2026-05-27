@@ -1,177 +1,227 @@
-# 🔐 Ryus Vault
+# Ryus Vault
+### Security Project · Python · Flask · Zero-Knowledge Authentication
 
-> **A self-hosted password vault where the server never learns your password.**  
-> *(A server tvůj heslo nikdy neuvidí — doslova.)*
+![Python](https://img.shields.io/badge/python-3.12-3776AB?style=flat-square&logo=python)
+![Flask](https://img.shields.io/badge/Flask-3.1-000000?style=flat-square&logo=flask)
+![Crypto](https://img.shields.io/badge/crypto-secp256k1%20%7C%20AES--256--GCM-blueviolet?style=flat-square)
+![ZKP](https://img.shields.io/badge/auth-Fiat--Shamir%20Schnorr%20ZKP-orange?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
 
----
-
-## What is this?
-
-Ryus Vault is a self-hosted, end-to-end encrypted password manager built on top of some genuinely interesting cryptography. The headline feature: authentication uses a **zero-knowledge proof** — you prove to the server that you know your secret without ever transmitting it. The server stores a public key, verifies a mathematical proof, and that's it.
-
-Your vault entries are encrypted **in the browser** before hitting the network. The server stores ciphertext it cannot read.
+> A self-hosted password vault with zero-knowledge authentication. The server stores an elliptic curve public key — never a password or its hash. Vault contents are encrypted client-side; the server holds only ciphertext it cannot read.
 
 ---
 
-## ✨ The Cool Part — Fiat-Shamir OR-Schnorr ZKP
+## Table of Contents
 
-### Laicky verze 🇨🇿
-
-Představ si, že chceš dokázat, že znáš heslo, aniž bys ho komukoliv řekl. Normálně to nejde — buď heslo pošleš, nebo nedokážeš nic. Ale s **zero-knowledge proofem (ZKP)** to jde.
-
-Konkrétně tady funguje toto: místo hesla pošleš **matematický důkaz** postavený na eliptické křivce **secp256k1** (jo, ta samá jako Bitcoin). Důkaz říká: *„Existuje tajná hodnota, která odpovídá tomuto veřejnému klíči"* — ale samotná tajná hodnota zůstane navždy u tebe.
-
-Celé to probíhá v prohlížeči. Na server letí jen čísla.
-
----
-
-### Technical version 🇬🇧
-
-Authentication is built on an **OR-Schnorr protocol**, made non-interactive via the **Fiat-Shamir heuristic**.
-
-Here's the flow:
-
-```
-Client                                    Server
-──────                                    ──────
-password + salt  →  PBKDF2 (200k rounds)
-                 →  secret (256-bit integer)
-                 →  public key = secret × G  (secp256k1)
-
-                         [registration: public key stored]
-
-Login:
-  1. fetch salt + dummy_public_key from /init
-  2. compute OR-proof:
-     ┌─ branch0 (real):  r ← random nonce
-     │                   R0 = r·G
-     │                   c0 = c_total − c1
-     │                   s0 = r − c0·secret
-     └─ branch1 (dummy): c1, s1 ← random
-                         R1 = s1·G + c1·dummy_pk   ← simulated
-  3. Fiat-Shamir challenge:
-     c_total = SHA-256(R0 ∥ R1 ∥ real_pk ∥ dummy_pk ∥ username)
-
-  4. send proof (R0, c0, s0, R1, c1, s1) → server
-
-Server verifies:
-  c0 + c1 ≡ c_total  (mod ORDER)
-  s0·G + c0·real_pk  == R0  ✓
-  s1·G + c1·dummy_pk == R1  ✓
-```
-
-The OR construction means the prover convinces the verifier they know **one of two** secrets — the real key, or the dummy key the server generates and forgets. It looks identical from the outside. This prevents the server from learning *which* branch was real.
-
-**The password never crosses the wire. Not as plaintext, not as a hash. Never.**
+1. [Overview](#overview)
+2. [Architecture](#architecture)
+   - [Directory Structure](#directory-structure)
+   - [Layer Breakdown](#layer-breakdown)
+3. [Cryptography](#cryptography)
+   - [Authentication — OR-Schnorr / Fiat-Shamir](#authentication--or-schnorr--fiat-shamir)
+   - [Vault Encryption — AES-256-GCM + HKDF](#vault-encryption--aes-256-gcm--hkdf)
+   - [Master Secret Protection](#master-secret-protection)
+4. [API](#api)
+5. [Security](#security)
+6. [Technology Stack](#technology-stack)
+7. [Running](#running)
+8. [Configuration](#configuration)
 
 ---
 
-## 🗄️ Vault Encryption
+## Overview
 
-After authentication you get a session token. But your vault entries are still encrypted — the server can't read them even with a valid session.
+Ryus Vault is a self-hosted password manager where authentication never transmits a password — not in plaintext, not as a hash. Login is based on an **OR-Schnorr zero-knowledge proof** made non-interactive via the **Fiat-Shamir heuristic**, operating on the **secp256k1** elliptic curve. Vault entries are encrypted in the browser before being sent; the backend stores and serves opaque ciphertext.
 
-```
-secret (your derived key)
-    │
-    └── HKDF-SHA256 (info: "ryus-vault-key", salt: per-user)
-              │
-              └── 256-bit AES-GCM key
-                      │
-                      ├── encrypt(entry) → ciphertext + nonce
-                      └── decrypt(ciphertext, nonce) → plaintext
-```
-
-Encryption and decryption happen entirely in the browser via the **Web Crypto API**. The `crypto.js` module implements secp256k1 point arithmetic from scratch using `BigInt` — no external crypto libraries on the client.
+**Key properties:**
+- Zero-knowledge authentication — server verifies a mathematical proof, not a credential
+- Client-side vault encryption — AES-256-GCM, Web Crypto API, no plaintext reaches the server
+- Encrypted secret storage — server holds an AES-GCM encrypted copy of the derived secret for migration purposes only; login does not require it
+- Clean Architecture — domain layer has no dependency on Flask, SQLite, or `py-ecc`
 
 ---
 
-## 🏗️ Architecture
+## Architecture
+
+### Directory Structure
 
 ```
-Ryus_vault/
-├── src/
-│   ├── crypto/
-│   │   ├── domain/          # abstract interfaces (SchnorrProtocol, VaultCipher)
-│   │   └── implementation/  # SchnorrProtocolImpl (py-ecc/secp256k1)
-│   │                        # VaultCipherImpl (AES-256-GCM + HKDF)
-│   ├── backend/
-│   │   ├── domain/          # User, VaultEntry, repositories
-│   │   └── implementation/  # SQLite-backed repos
-│   ├── api/
-│   │   ├── routes/          # /auth (init, register, login, logout)
-│   │   │                    # /vault (CRUD entries)
-│   │   └── middleware/      # JWT auth, rate limiting
-│   └── web/
-│       └── static/js/
-│           ├── crypto.js    # secp256k1 + WebCrypto (client-side)
-│           ├── login.js     # OR-proof generation in browser
-│           └── vault.js     # encrypt/decrypt vault entries
+src/
+├── crypto/
+│   ├── domain/          # SchnorrProtocol, VaultCipher (abstract interfaces)
+│   └── implementation/  # SchnorrProtocolImpl (py-ecc/secp256k1)
+│                        # VaultCipherImpl (AES-256-GCM + HKDF)
+├── backend/
+│   ├── domain/          # User, VaultEntry entities; repository interfaces
+│   └── implementation/  # AuthRepositoryImpl, VaultRepositoryImpl (SQLite)
+├── api/
+│   ├── routes/          # Blueprints: /api/auth, /api/vault
+│   ├── middleware/       # JWT auth, rate limiting, CSP headers
+│   ├── schemas/         # Pydantic input validation
+│   └── errors/          # error handlers
+├── config/              # Settings (env variables)
+├── logs/                # sanitized logger
+└── web/
+    ├── templates/        # Jinja2 templates (login, register, vault)
+    └── static/js/
+        ├── crypto.js     # secp256k1 point arithmetic (BigInt) + Web Crypto API
+        ├── login.js      # OR-proof generation in the browser
+        ├── register.js   # key derivation, registration flow
+        └── vault.js      # client-side encrypt / decrypt
 ```
 
-Clean Architecture — domain knows nothing about Flask, SQLite, or `py-ecc`. Implementations are swappable.
+### Layer Breakdown
+
+| Layer | Location | Responsibility |
+|---|---|---|
+| **Domain** | `crypto/domain`, `backend/domain` | Abstract interfaces, entities (`User`, `VaultEntry`), no framework dependencies |
+| **Implementation** | `crypto/implementation`, `backend/implementation` | `py-ecc` Schnorr, `cryptography` AES/HKDF, SQLite repositories |
+| **API** | `api/` | Flask blueprints, Pydantic schemas, JWT middleware, rate limiting |
+| **Client** | `web/static/js/` | secp256k1 arithmetic, proof generation, AES-GCM via Web Crypto API |
+
+Dependencies flow inward — `domain` modules have no knowledge of Flask, SQLite, or any crypto library.
 
 ---
 
-## 🛠️ Stack
+## Cryptography
 
-| Layer | Tech |
+### Authentication — OR-Schnorr / Fiat-Shamir
+
+Login uses a non-interactive **OR-Schnorr identification protocol** transformed via the Fiat-Shamir heuristic. The client proves knowledge of `secret` (PBKDF2 derivative of the password) without transmitting it.
+
+**Registration:**
+
+1. Client derives `secret` from the password via PBKDF2-HMAC-SHA256 (200 000 iterations, 32-byte salt).
+2. Computes `public_key = secret × G` on secp256k1.
+3. Sends `(username, public_key, salt)` to the server. `secret` never leaves the browser.
+4. Server generates a random dummy key pair `(dummy_secret, dummy_pk)`, stores `dummy_pk`, discards `dummy_secret`.
+
+**Login:**
+
+```
+Simulated branch (branch1):
+  c1, s1 ← random
+  R1 = s1·G + c1·dummy_pk            # back-computed commitment
+
+Real branch (branch0):
+  r  ← random nonce
+  R0 = r·G
+
+Fiat-Shamir challenge:
+  c_total = SHA-256(R0 ‖ R1 ‖ real_pk ‖ dummy_pk ‖ username)
+  c0 = c_total − c1  (mod ORDER)
+  s0 = r − c0·secret (mod ORDER)
+
+Proof sent: (R0, c0, s0, R1, c1, s1)
+```
+
+**Server verification:**
+
+```
+c0 + c1 ≡ c_total         (mod ORDER)
+s0·G + c0·real_pk  == R0
+s1·G + c1·dummy_pk == R1
+```
+
+The OR construction (Cramer–Damgård–Schoenmakers) makes both branches computationally indistinguishable. The constraint `c0 + c1 = c_total` prevents forging a valid proof without knowing at least one secret: an attacker would need to fix `c0` before `c_total` is known, which the deterministic Fiat-Shamir hash makes impossible.
+
+Curve: **secp256k1**, GROUP ORDER ≈ 2²⁵⁶.
+
+### Vault Encryption — AES-256-GCM + HKDF
+
+```
+secret + per-user salt
+        │
+        └── HKDF-SHA256 (info: "ryus-vault-key")
+                  │
+                  └── 256-bit AES-GCM key
+                            │
+                            ├── encrypt(entry plaintext) → (ciphertext, nonce)
+                            └── decrypt(ciphertext, nonce) → plaintext
+```
+
+Encryption and decryption run entirely in the browser via the **Web Crypto API**. `crypto.js` implements secp256k1 point arithmetic from scratch using `BigInt` — no external cryptographic library on the client side.
+
+### Master Secret Protection
+
+The server stores `encrypted_secret` per user — the PBKDF2-derived `secret` encrypted with AES-256-GCM under `VAULT_MASTER_SECRET`. This value is not used for login verification; it exists solely for potential data migration. It is reversibly encrypted, not hashed.
+
+---
+
+## API
+
+### Auth — `/api/auth`
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/init/<username>` | Returns `salt` and `dummy_pk`. Returns random valid-shaped data for non-existent users (enumeration protection). |
+| `POST` | `/register` | Body: `username`, `secret`, `public_key_x`, `public_key_y`, `salt`. |
+| `POST` | `/login` | Body: `username`, `branch0 {commitment_x, commitment_y, challenge, response}`, `branch1` (same). Sets httponly `session` cookie on success. |
+| `POST` | `/logout` | Clears `session` cookie. |
+
+### Vault — `/api/vault` *(requires authentication)*
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/entries` | All entries for the authenticated user: `id`, `title`, `ciphertext`, `nonce`. |
+| `POST` | `/entries` | Body: `title`, `ciphertext` (hex), `nonce` (hex). |
+| `GET` | `/entries/<id>` | Single entry by ID. |
+| `DELETE` | `/entries/<id>` | Delete entry. |
+
+---
+
+## Security
+
+| Property | Mechanism |
 |---|---|
-| Backend | Python · Flask 3 · Pydantic |
-| Crypto (server) | `py-ecc` (secp256k1) · `cryptography` (AES-GCM, HKDF) |
-| Crypto (client) | Vanilla JS · Web Crypto API · BigInt |
-| Auth | Zero-knowledge OR-Schnorr · JWT (httponly cookie) |
-| Storage | SQLite |
-| Rate limiting | Flask-Limiter |
+| Authentication | OR-Schnorr ZKP (Fiat–Shamir) on secp256k1 |
+| Password transmission | Never sent — proof only |
+| Vault confidentiality | AES-256-GCM, client-side encryption |
+| Key derivation | PBKDF2-HMAC-SHA256, 200 000 iterations |
+| Session | JWT (HS256), httponly cookie, 1-hour expiry |
+| User enumeration | `/init` returns random data for unknown usernames |
+| Rate limiting | 200 req/hour per IP (Flask-Limiter, in-memory) |
+| Content Security Policy | Per-request nonce; `script-src` / `style-src` nonce-restricted |
+| Input validation | Pydantic schemas; 1 MB payload cap; non-JSON `Content-Type` rejected |
 
 ---
 
-## 🚀 Running it
+## Technology Stack
+
+| Area | Library / Tool |
+|---|---|
+| Language | Python 3.12 |
+| Web framework | Flask 3.1 |
+| Cryptography (server) | `py-ecc` (secp256k1), `cryptography` (AES-GCM, HKDF, PBKDF2) |
+| Cryptography (client) | Web Crypto API, native `BigInt` secp256k1 |
+| Authentication | JWT via `PyJWT`, OR-Schnorr ZKP |
+| Validation | Pydantic 2 |
+| Storage | SQLite (`sqlite3`) |
+| Rate limiting | Flask-Limiter 4 |
+| CORS | flask-cors |
+| Templating | Jinja2 |
+
+---
+
+## Running
 
 ```bash
-# 1. Install dependencies
 pip install -r requirements.txt
-
-# 2. Set secrets
-export JWT_SECRET=$(python -c "import secrets; print(secrets.token_hex(32))")
-export VAULT_MASTER_SECRET=$(python -c "import secrets; print(secrets.token_hex(32))")
-
-# 3. Run
 python main.py
 ```
 
-By default serves on `0.0.0.0:5000`. Set `HOST`, `PORT`, `DEBUG` env vars to override.
+On first run, `JWT_SECRET` and `VAULT_MASTER_SECRET` are generated automatically and appended to `.env`. The database `data/vault.db` is created automatically.
+
+Default: `http://0.0.0.0:5000`.
 
 ---
 
-## 🔒 Security Properties
+## Configuration
 
-| Property | Status |
-|---|---|
-| Password never sent to server | ✅ ZKP — mathematically guaranteed |
-| Vault data encrypted at rest | ✅ AES-256-GCM, server only sees ciphertext |
-| Replay attack resistance | ✅ Schnorr nonce is random per proof |
-| Username enumeration resistance | ✅ `/init` returns dummy data for unknown users |
-| Brute-force resistance | ✅ PBKDF2 (200 000 iterations) + Flask-Limiter |
-| No password hashes to leak | ✅ Server stores EC public key, not a hash |
-
----
-
-## 📐 The Math (if you want it)
-
-The Fiat-Shamir transform converts an interactive Schnorr identification scheme into a non-interactive proof by replacing the verifier's random challenge with a hash of the transcript:
-
-```
-Interactive Schnorr:        Non-interactive (Fiat-Shamir):
-  Prover → R = r·G            same, but c = H(R ∥ pk ∥ msg)
-  Verifier → c (random)       no verifier needed
-  Prover → s = r − c·x        proof = (R, c, s)
-  Verify: s·G + c·pk == R
-```
-
-The OR construction (Cramer-Damgård-Schoenmakers 1994) lets a prover simulate one branch while producing a real proof for the other, such that both look identical. The constraint `c0 + c1 = c_total` ties them together and cannot be faked without knowing at least one secret.
-
-Curve used: **secp256k1** — 256-bit prime field, group order ≈ 2²⁵⁶, same parameters as Bitcoin/Ethereum.
-
----
-
-*Made for the purpose of exploring applied zero-knowledge cryptography.*
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JWT_SECRET` | auto-generated | HMAC-SHA256 signing key for JWT tokens. |
+| `VAULT_MASTER_SECRET` | auto-generated | AES-GCM key for encrypting stored `encrypted_secret` values. |
+| `HOST` | `0.0.0.0` | Bind address. |
+| `PORT` | `5000` | Bind port. |
+| `DEBUG` | `false` | Flask debug mode. |
